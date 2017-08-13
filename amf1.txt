@@ -1,0 +1,113 @@
+#-*- coding:utf-8 -*-
+#auth:duangx
+#email:984871817@qq.com
+
+import urllib2
+import pyamf
+import uuid
+from pyamf import remoting
+from pyamf.flex import messaging
+import MySQLdb
+import MySQLdb.cursors
+from datetime import date,timedelta
+from multiprocessing import Pool
+
+#获取日期信息
+def get_date(start,stop,step):
+    while start<stop:
+        yield start
+        start+=step
+
+#获取某一天的监测信息
+def get_data(url,dt):
+    msg=messaging.RemotingMessage(messageId=str(uuid.uuid1()).upper(),
+                                  operation='getAllSiteDayReportByDate',
+                                  clientId=None,
+                                  destination='airSiteDayReportService',
+                                  timestamp=0,
+                                  timeToLive=0
+                                  )
+
+    sourcedate=str(dt)
+    msg.body=[sourcedate]
+    msg.headers['DSId']=str(uuid.uuid1()).upper()
+    msg.headers['DSEndpoint']='my-amf'
+
+    #按AMF协议进行编码
+    req=remoting.Request('null',body=(msg,))
+    env=remoting.Envelope(amfVersion=pyamf.AMF3)
+    env.bodies=[('/2',req)]
+    data=bytes(remoting.encode(env).read())
+
+    #提交Requset请求
+    req=urllib2.Request(url,data,headers={'Content-Type':'application/x-amf'})
+    #解析请求返回的数据
+    opener=urllib2.build_opener()
+
+    #解码AMF协议返回的数据
+
+    resp=remoting.decode(opener.open(req).read())
+
+    msg_ones= resp.bodies[0][1].body.body
+    return msg_ones
+
+#存储到MYSQL数据库
+def save_to_mysql(msg_ones,dt):
+    db=MySQLdb.connect(host='127.0.0.1',user='root',passwd='root',db='air_quality',
+                       port=3306,charset='utf8',cursorclass=MySQLdb.cursors.DictCursor)
+    db.autocommit(True)
+    cursor=db.cursor()
+    count=0
+    try:
+        for msg_one in msg_ones:
+            count+=1
+            print u'正在采集的数据序号为:',count
+            #单个检测地点的信息
+            o3MaxNd=msg_one['o3MaxNd']
+            cityName=msg_one['cityName']
+            qualityCategory=msg_one['qualityCategory']
+            cond=msg_one['cond']
+            colorAQI=msg_one['colorAQI']
+            aqipollution=msg_one['aqipollution']
+            siteName=msg_one['siteName']
+            pm10Nd=msg_one['pm10Nd']
+            so2Nd=msg_one['so2Nd']
+            pm25Nd=msg_one['pm25Nd']
+            no2Nd=msg_one['no2Nd']
+            o38MaxNd=msg_one['o38MaxNd']
+            aqi=msg_one['aqi']
+            qualityLevel=msg_one['qualityLevel']
+            source_date=dt
+            item=[source_date,cityName,siteName,so2Nd,no2Nd,pm10Nd,cond,o38MaxNd,pm25Nd,aqi,
+            aqipollution,qualityLevel,qualityCategory,colorAQI,o3MaxNd ]
+            print item
+            cursor.execute("insert into air_quality(source_date,cityName,siteName,so2Nd,no2Nd,pm10Nd,cond,o38MaxNd,pm25Nd,aqi,\
+                         aqipollution,qualityLevel,qualityCategory,colorAQI,o3MaxNd)\
+                         values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                       [item[0],item[1],item[2],item[3],item[4],item[5],item[6], \
+                        item[7], item[8],item[9],item[10],item[11],item[12],item[13],item[14]])
+            print "insert into air_quality(source_date,cityName,siteName,so2Nd,no2Nd,pm10Nd,cond,o38MaxNd,pm25Nd,aqi,\
+                         aqipollution,qualityLevel,qualityCategory,colorAQI,o3MaxNd)\
+                         values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            [item[0],item[1],item[2],item[3],item[4],item[5],item[6], \
+             item[7], item[8],item[9],item[10],item[11],item[12],item[13],item[14]]
+    except Exception:
+        pass
+
+
+    cursor.close()
+    db.close()
+
+def main(dt):
+    url='http://111.75.227.203:9180/eipp/messagebroker/amf'
+    print u'当前采集的数据日期为:',dt
+    item=get_data(url,dt)
+    save_to_mysql(item,dt)
+
+if __name__=="__main__":
+    x=[dt for dt in get_date(date(2016,7,27),date(2017,7,28),timedelta(days=1))]
+    pool=Pool()
+    pool.map(main,x)
+
+    pool.close()
+    pool.join()
