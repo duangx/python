@@ -1,0 +1,55 @@
+import threading
+import time, random, sys
+
+
+class Counter:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.value = 0
+
+    def increment(self):
+        self.lock.acquire()
+        self.value = value = self.value + 1
+        self.lock.release()
+        return value
+
+
+counter = Counter()
+cond = threading.Condition()
+
+
+class Worker(threading.Thread):
+
+    def run(self):
+        print(self.getName(), "-- created.")
+        cond.acquire()
+        # for i in range(10):
+        # pretend we're doing something that takes 10?00 ms
+        # value = counter.increment()
+        # time.sleep(random.randint(10, 100) / 1000.0)
+        cond.wait()
+        # print self.getName(), "-- task", "finished"
+        cond.release()
+
+
+import xlrd
+import xlwt
+import numpy as np
+import sys
+ 
+def write():
+    data = xlrd.open_workbook('C:/Users/duangx/Desktop/txt.xlsx')
+    file = xlwt.Workbook()
+    for si,sheet in enumerate(data.sheets()):
+        values = sheet.col_values(0)
+        if values:
+            print(values)
+            table = file.add_sheet('sheet'+str(si+1))
+            d = ((ri,ci,c) for ri,r in enumerate(np.array(values).reshape(len(values)//7,7)) for ci,c in enumerate(r))
+            for msg in d:
+                m = list(msg)
+                table.write(m[0],m[1],m[2])
+    file.save('C:/Users/duangx/Desktop/newdata.xls')
+if __name__ == '__main__':
+    # write(sys.argv[1])
+    write()
